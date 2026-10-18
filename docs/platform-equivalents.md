@@ -104,6 +104,22 @@ The *Watch out* notes under each table cover the differences that cause bugs.
 | Console CSV upload | Snowsight file load | Data Ingestion → Create or modify table |
 | (none) | Schema evolution on `COPY` / Snowpipe | Schema evolution + `_rescued_data` in Auto Loader |
 
+### Files: GCS ↔ stage ↔ volume
+
+| GCP | Snowflake | Databricks |
+|---|---|---|
+| GCS bucket / prefix | Internal stage | Managed volume |
+| GCS bucket + external table connection | External stage + storage integration | External volume + storage credential + external location |
+| `gs://bucket/path` | `@db.schema.stage/path` | `/Volumes/catalog/schema/volume/path` |
+| `gcloud storage cp ./f gs://…` | `PUT file://f @stage` | `databricks fs cp ./f dbfs:/Volumes/…` |
+| `gcloud storage ls gs://…` | `LIST @stage` | `LIST '/Volumes/…'` |
+| External table over the files | `SELECT $1 FROM @stage (FILE_FORMAT => …)` | `SELECT * FROM read_files('/Volumes/…', format => 'csv')` |
+| `bq load` | `COPY INTO t FROM @stage` | `COPY INTO t FROM '/Volumes/…'` |
+| GCS trigger → load | Snowpipe on a stage | Auto Loader on a volume |
+| IAM on the bucket | `GRANT READ/WRITE ON STAGE` | `GRANT READ VOLUME / WRITE VOLUME ON VOLUME` |
+| (none) | `FILE FORMAT` objects | Inline options (`sep`, `header`, `schemaHints`) |
+| (none) | Table stage `@%t`, user stage `@~` | (none; only volumes you create) |
+
 ---
 
 ## 6. Transformation and dbt
