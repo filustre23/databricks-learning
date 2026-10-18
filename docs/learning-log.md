@@ -55,11 +55,18 @@ clicked, and what that means for the `databricks-intro` module in
 
 **Questions asked (hands-on)**
 - "These files would normally be in an S3 bucket, correct?" (after generating the Source B files)
+- "So Databricks doesn't actually have a warehouse? Everything is in S3 and we transform within it as if it was the warehouse?"
 
 **Module impact (added)**
 6. **In lesson 03 (Volumes), show the production path next to the sandbox path:**
    `s3://<landing>/<source>/<feed>/yyyy/mm/dd/` ↔ `/Volumes/<env>/landing/<source>/…`. Upload the sandbox files
    into feed/date folders from the start, so the learner practices the real layout.
+
+7. **Make the new "Where data actually lives" lesson cover the full lakehouse stack:** storage (S3) → table format
+   (Delta: Parquet + `_delta_log`) → compute (SQL warehouse = compute only, like a Snowflake virtual warehouse) →
+   governance (Unity Catalog). The learner's mental model was "no warehouse, just S3". The missing pieces were Delta
+   and the fact that a "SQL warehouse" is only compute. Exercise: `DESCRIBE DETAIL` / `DESCRIBE HISTORY` on the
+   first loaded table.
 
 ---
 
