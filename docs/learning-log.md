@@ -60,8 +60,8 @@ clicked, and what that means for the `databricks-intro` module in
 | Step | Status | Notes |
 |---|---|---|
 | 0. CLI profile `lab` (`databricks auth login`) | ✅ Done | Profile valid; user active |
-| 1. Generate Source B (Aetna layout) locally | ⏳ Next | |
-| 2. Sandbox schema + managed volume + `fs cp` | | |
+| 1. Generate Source B (Aetna layout) locally | ✅ Done | 3 files, 68,909 rows, 106 seeded defects. Eligibility is member-month grain (44k rows ≈ 2k members × 24 months); the medical file is 178 columns wide. |
+| 2. Sandbox schema + managed volume + `fs cp` | ⏳ Next | |
 | 3. `read_files()` profiling | | |
 | 4. `COPY INTO` | | |
 | 5. Auto Loader | | |
