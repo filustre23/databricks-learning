@@ -20,6 +20,9 @@ conforms and unions them, and are served from gold as one common claims and elig
   explain why, and point to the docs. Claude tooling (`CLAUDE.md`, `.claude/`, `.mcp.json`) and
   `docs/progress.md` entries are the exception.
 - Work one step at a time: give the next command, wait for the pasted output, then verify.
+- **Keep `docs/learning-log.md` current.** After each step or concept, record what was covered, the learner's
+  questions (close to verbatim), what clicked, and any proposed change to the knowledge-builder `databricks-intro`
+  module. When a pattern repeats, propose the module change to the learner. Don't edit knowledge-builder silently.
 
 ## Hard rules
 
