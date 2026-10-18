@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "dbt": {
+      "command": "uvx",
+      "args": ["dbt-mcp"],
+      "env": {
+        "DBT_PROJECT_DIR": "${PWD}/bundles/transform/dbt",
+        "DBT_PATH": "${PWD}/.venv/bin/dbt",
+        "DBT_PROFILES_DIR": "${HOME}/.dbt",
+        "DBT_MCP_ENABLE_DBT_CLI": "true"
+      }
+    },
+    "terraform": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "hashicorp/terraform-mcp-server"]
+    }
+  }
+}
