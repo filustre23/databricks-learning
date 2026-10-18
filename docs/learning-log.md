@@ -56,6 +56,7 @@ clicked, and what that means for the `databricks-intro` module in
 **Questions asked (hands-on)**
 - "These files would normally be in an S3 bucket, correct?" (after generating the Source B files)
 - "So Databricks doesn't actually have a warehouse? Everything is in S3 and we transform within it as if it was the warehouse?"
+  - The first answer (a four-layer stack diagram + tables) was "kinda hard to understand". The re-explanation that worked: a Snowflake comparison table + "a table = a folder of files + a logbook".
 
 **Module impact (added)**
 6. **In lesson 03 (Volumes), show the production path next to the sandbox path:**
@@ -67,6 +68,9 @@ clicked, and what that means for the `databricks-intro` module in
    governance (Unity Catalog). The learner's mental model was "no warehouse, just S3". The missing pieces were Delta
    and the fact that a "SQL warehouse" is only compute. Exercise: `DESCRIBE DETAIL` / `DESCRIBE HISTORY` on the
    first loaded table.
+8. **Teaching style: simple first, detail on request.** Lead with one sentence, one comparison to a platform the
+   learner knows, and one tiny picture. Save the layered diagrams and feature tables for "going further". Dense
+   multi-table answers lost the learner; "table = folder + logbook" landed.
 
 ---
 
