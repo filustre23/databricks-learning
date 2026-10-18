@@ -79,13 +79,18 @@ databricks-learning/
 │   └── skills/                    # add-payer-files, phase-check, cost-check, tf-stack, bundle-ship,
 │                                  #   dbt-dev-loop, triage-run, dq-scorecard, teardown (§9b)
 ├── Makefile                       # thin wrappers: make tf-plan STACK=30, make deploy T=dev, make drop SRC=a
-├── pyproject.toml / uv.lock       # uv workspace root (generators + libs + dbt deps)
+├── pyproject.toml / uv.lock       # uv workspace root (members: generators, libs/source_ingest; groups: dev, dbt)
+├── .python-version                # pinned interpreter for uv
 ├── .pre-commit-config.yaml        # terraform fmt, tflint, sqlfluff (databricks dialect), ruff, yamllint
 ├── .github/workflows/
 │   ├── terraform.yml              # fmt/validate/plan on PR; apply on main (manual-approval environment)
-│   ├── pr.yml                     # PR → main: bundle validate, unit tests, dbt slim CI into lab_dev.ci_pr<N>_*
+│   ├── pr.yml                     # PR → main: lint, unit tests, tf plan, bundle validate, dbt slim CI into ci_pr<N>_*
+│   ├── pr-integration.yml         # label `run-integration`: golden-drop test on a per-PR dev deploy
+│   ├── pr-cleanup.yml             # PR closed: drop ci_pr<N>_* schemas, destroy per-PR deploys
 │   ├── preprod.yml                # push to main: bundle deploy -t preprod, full dbt build in lab_preprod, golden-drop test
-│   └── prod.yml                   # push to release: bundle deploy -t prod (GitHub env `prod`, approval) — OIDC, no secrets
+│   ├── prod.yml                   # push to release: deploy -t prod (env `prod`, approval), smoke run, release tag
+│   ├── drift.yml                  # weekly terraform plan -detailed-exitcode on every stack
+│   └── rollback.yml               # workflow_dispatch: redeploy a previous release tag to prod
 │
 ├── terraform/
 │   ├── 00-bootstrap/              # us-west-2 state bucket (versioned, native S3 locking), $25 AWS budget,
@@ -166,6 +171,17 @@ databricks-learning/
     └── evaluation.md              # your findings notebook (§6)
 ```
 
+### Python toolchain: uv (everything Python goes through it)
+
+- **One uv workspace** at the repo root. The root `pyproject.toml` declares `[tool.uv.workspace] members = ["generators", "libs/source_ingest"]`. `uv.lock` is committed, and `.python-version` pins the interpreter (pick one the Databricks serverless environment supports).
+- **Dependency groups** in the root `pyproject.toml`:
+  - `dev`: ruff, pytest, pre-commit, sqlfluff + sqlfluff-templater-dbt, yamllint
+  - `dbt`: dbt-core + dbt-databricks, pinned
+  - `spark` (optional): databricks-connect, only for tests that need Spark
+- **Every command is `uv run …`:** `uv run pytest`, `uv run dbt build`, `uv run ruff check`, `uv run python generators/drop_simulator.py`. One-off tools run with `uvx` (`uvx dbt-mcp`).
+- **The shared library is a wheel.** `libs/source_ingest` is built with `uv build --wheel`. Each bundle declares it under `artifacts:` (`build: uv build --wheel`) and lists the built wheel in its serverless environment `dependencies`, so pipelines and jobs run exactly the locked code.
+- **CI uses the same toolchain:** `astral-sh/setup-uv` with caching, then `uv sync --locked`. CI fails if `uv.lock` is out of date. Nothing is `pip install`ed by hand anywhere.
+
 **Design decisions (write each as an ADR):**
 1. **Three environments, one catalog each:** **dev** (`lab_dev`, feature branches, `dbt_<you>_*` schemas) → **preprod** (`lab_preprod`, deployed on merge to **`main`**) → **prod** (`lab_prod`, deployed on merge `main` → **`release`**). Schemas: `landing`, `<source_id>_bronze` (one per source), `silver`, `gold`, `observation` (pipeline health), `outbound` (reconciliation and return files for payers, with tighter grants). Payer files land and are ingested **once**, into prod bronze. dev and preprod dbt read the `lab_prod.*_bronze` schemas (`SELECT` only) and write to their own catalog. Ingestion code is tested in dev and preprod against golden drops in each catalog's own `landing` volume.
 2. **Bronze in Lakeflow, everything after in dbt.** Ingestion is a streaming and schema-evolution problem; modeling is a SQL problem.
@@ -182,7 +198,9 @@ databricks-learning/
 > **Loop for each component:** UI first (learn) → CLI (inspect and automate) → code (Terraform, bundle or dbt) → destroy and redeploy from code.
 
 ### Phase 0 — Pre-trial prep (Days 0–1, no trial clock)
-- Install the CLI tools: `brew tap databricks/tap && brew install databricks`, `terraform`, `uv`, and `dbt-databricks` (in a uv env).
+- Install the CLI tools: `brew tap databricks/tap && brew install databricks`, `terraform`, `uv`.
+- Set up the uv workspace: root `pyproject.toml` with the workspace members and the `dev`/`dbt` groups, `.python-version`, then `uv sync` and a committed `uv.lock`. dbt-databricks gets installed through the `dbt` group, not globally.
+- Start CI early: a `pr.yml` with only ruff, pytest, terraform fmt/validate and `uv sync --locked`. It's free and grows each phase (see Phase 8).
 - Work through the §0 guardrails: `.gitignore`, the AWS profile, and `default_tags`.
 - Run the generators locally for sources A, B and C. Study the layouts and write `config/sources/*.yml` by hand.
 - Write `terraform/00-bootstrap` and apply it in us-west-2: state bucket, budget alarm.
@@ -327,18 +345,58 @@ The streaming layer needs to **fail loudly, quarantine quietly, and prove both w
 - Build a monthly job that builds the `outbound` models and writes return files to the outbound volume. Add a check that fails if a payer's expected return file is missing; an empty `outbound` is a business failure, not a quiet success.
 - Add a SQL **Alert** on `observation.feed_freshness`.
 
-### Phase 8 — CI/CD and hardening (Day 14)
-- Use GitHub Actions in `databricks-learning` with `databricks/setup-cli`.
-- Set up GitHub OIDC federation to the `preprod-deployer` and `prod-deployer` service principals so no secrets are stored. For Terraform, use a GitHub OIDC → AWS IAM role, created in `00-bootstrap`.
-- **Promotion flow: dev → preprod (`main`) → prod (`release`):**
-  - **PR → `main`:** Terraform plan, bundle validate, unit tests, and dbt slim CI (`state:modified+`, deferred to the prod manifest) into `lab_dev.ci_pr<N>_*`, dropped when the PR closes.
-  - **Push to `main` → preprod:** deploy all bundles `-t preprod` as `preprod-deployer`, run a full `dbt build` and tests in `lab_preprod`, and run the golden-drop integration test. Preprod triggers stay **paused** to save cost.
-  - **PR `main` → `release` → prod:** the PR body carries the preprod run link and the `lab_preprod` vs `lab_prod` diff. The `prod` GitHub environment requires approval. Merging deploys `-t prod` as `prod-deployer`, with `run_as` set to `prod-runner` and live triggers.
-  - **Hotfix:** branch from `release` → PR into `release` → PR `release` → `main`.
-- Protect both `main` and `release`. Scope the OIDC federation policies per service principal: `preprod-deployer` → `ref:refs/heads/main`, `prod-deployer` → `environment:prod`.
-- dbt targets are `dev`, `ci`, `preprod` and `prod`. `generate_schema_name` gives dev `dbt_<user>_*`, CI `ci_pr<N>_*`, and preprod/prod the plain schema names.
-- Pre-commit hooks: sqlfluff, terraform fmt, ruff.
-- **Done when:** a PR that changes one staging model passes slim CI. Merging to `main` builds `lab_preprod` green. The `main` → `release` PR deploys it to `lab_prod`. One hotfix round-trip leaves `main` and `release` in sync.
+### Phase 8 — CI/CD for Databricks, done properly (built incrementally, finished Day 14)
+
+CI/CD isn't a single day at the end. Each phase adds the checks for what it introduced, and Day 14 finishes the deploy and promotion workflows.
+
+| Phase | CI gains |
+|---|---|
+| 0 | `pr.yml`: `uv sync --locked`, ruff, pytest (unit), terraform fmt/validate/tflint, gitleaks |
+| 1–2 | Terraform plan on PR, posted as a PR comment (OIDC to AWS and Databricks) |
+| 4 | `databricks bundle validate -t dev/preprod/prod` for every bundle |
+| 4b | Unit tests for parsers and the expectation builder. The golden-drop integration test is runnable by label. |
+| 5 | sqlfluff (dbt templater), dbt parse/compile, dbt slim CI into `lab_dev.ci_pr<N>_*` |
+| 8 | Deploy workflows: preprod on `main`, prod on `release`. Cleanup, drift and rollback workflows. |
+
+**Workflows (`.github/workflows/`):**
+- **`pr.yml` (PR → `main`, no deploy):**
+  - Lint: ruff, sqlfluff, yamllint, terraform fmt, tflint.
+  - Run `uv run pytest tests/unit` and `bundle validate` for all targets.
+  - Post the Terraform plan as a comment.
+  - **dbt slim CI:** `dbt build --select state:modified+ --defer --state <prod manifest>` into `ci_pr<N>_*`. The prod manifest is the artifact uploaded by the last prod deploy.
+  - Required checks gate the merge.
+- **`pr-integration` (label-triggered):** deploys the ingestion bundle to `dev` with a per-PR name prefix and runs the golden-drop integration test. It costs DBUs, so it runs only when the `run-integration` label is added.
+- **`preprod.yml` (push to `main`):**
+  - Deploys every bundle with `-t preprod` as `preprod-deployer`.
+  - Runs the full `dbt build` + `dbt source freshness` in `lab_preprod`, then the golden-drop integration test against `lab_preprod`.
+  - Publishes the preprod manifest and results as artifacts.
+- **`prod.yml` (push to `release`):**
+  - `environment: prod` with required approval.
+  - Deploys `-t prod` as `prod-deployer`, then runs a **smoke job** (one tiny dbt selector, plus checking that the pipeline is healthy and the triggers are live).
+  - Uploads the prod `manifest.json` for future slim CI.
+  - Creates a release tag (`vYYYY.MM.DD-N`) with generated notes.
+- **`pr-cleanup.yml` (PR closed):** drops the `lab_dev.ci_pr<N>_*` schemas and destroys any per-PR dev bundle deployment.
+- **`drift.yml` (weekly, `workflow_dispatch`):** `terraform plan -detailed-exitcode` on every stack. It opens an issue on drift. It calls only APIs and uses no Databricks compute.
+- **`rollback.yml` (`workflow_dispatch` with a tag input):** checks out a previous release tag and redeploys `-t prod`. A rollback is a deploy of known-good code, never manual clicks.
+
+**Practices to apply:**
+- **No secrets:** GitHub OIDC → Databricks workload identity federation (one policy per service principal: `preprod-deployer` → `ref:refs/heads/main`, `prod-deployer` → `environment:prod`), and GitHub OIDC → an AWS IAM role for Terraform.
+- **Pinned everything:** action SHAs, the `databricks/setup-cli` version, `uv.lock`, the dbt-databricks version, and Terraform provider lock files.
+- **One deploy at a time:** a `concurrency:` group per environment, with `cancel-in-progress: false` for deploys. Bundles also take their own deployment lock.
+- **Bundle settings:** `mode: production` for preprod and prod. In prod, `run_as` is `prod-runner`. Add top-level `permissions`, per-target `variables` (catalog, warehouse, notification email) and `presets` (tags, trigger pause status). Deploys carry git metadata (branch, SHA), so every job shows which commit is running.
+- **Same artifact everywhere:** the wheel is built once per workflow run with `uv build`, and the same commit is promoted from `main` to `release`. Nothing is rebuilt differently for prod.
+- **Test pyramid by cost:** unit tests and validation on every PR (free), then integration by label, a full build on preprod, and only a smoke run in prod.
+- **Timeouts and budgets:** every job sets `timeout_minutes`, and CI jobs use serverless with the lab budget policy, so CI usage shows up in `/cost-check`.
+- **Repo rules:** protect `main` and `release` (required checks, no force-push, linear history), and use CODEOWNERS for `terraform/` and `bundles/*/databricks.yml`. Pre-commit runs the same linters locally (`uv run pre-commit install`).
+- **dbt naming:** targets `dev`, `ci`, `preprod` and `prod`. `generate_schema_name` gives dev `dbt_<user>_*`, CI `ci_pr<N>_*`, and preprod/prod the plain schema names.
+
+**Done when:**
+- A PR that changes one staging model passes all required checks, including slim CI, and leaves no `ci_pr<N>` schemas after it closes.
+- Merging to `main` builds `lab_preprod` green.
+- The `main` → `release` PR (approved) deploys to `lab_prod`, the smoke run passes, and a release tag is created.
+- `rollback.yml` redeploys the previous tag successfully.
+- One hotfix round-trip leaves `main` and `release` in sync.
+- `drift.yml` reports no drift.
 
 ### Phase 9 — Consumption, evaluation, teardown (Day 15; sidebar: *Dashboards, Genie Agents, Query History, Playground*)
 - Build an AI/BI **Dashboard** (lives by source, member months, PMPM, ED and IP per 1,000, feed freshness) and export it to `bundles/ops`.

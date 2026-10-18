@@ -139,7 +139,12 @@ conforms and unions them, and are served from gold as one common claims and elig
 - dbt: from `bundles/transform/dbt`, `uv run dbt build --target dev --select <selector>`. Always use a scoped selector.
   Locally, use the `dev` target only.
 - Terraform: from `terraform/<stack>`, `terraform init` / `plan` / `apply`. Destroy in reverse order, 40 → 10.
-- Python: `uv sync`, `uv run pytest`.
+- Python: **uv only.** `uv sync` (CI: `uv sync --locked`), `uv run pytest`, `uv run ruff check`, `uv run dbt …`,
+  `uvx <tool>` for one-offs. Never `pip install`. Add dependencies with `uv add` (`--group dev|dbt`) so `uv.lock` updates.
+  The shared library is built with `uv build --wheel` and shipped by bundles as an artifact.
+- CI/CD: GitHub Actions. `pr.yml` (lint, unit tests, tf plan, bundle validate, dbt slim CI), `preprod.yml` (`main`),
+  `prod.yml` (`release`, approval, smoke run, tag), plus cleanup, drift and rollback workflows (plan Phase 8).
+  Each phase adds its own CI checks, so CI grows from Phase 0 instead of all arriving at the end.
 - Spend: `/cost-check`.
 
 ## Skills (`.claude/skills/`)
