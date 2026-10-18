@@ -54,7 +54,7 @@ conforms and unions them, and are served from gold as one common claims and elig
 | `bundles/transform/` | Bundle: dbt project (`dbt/`) + dbt job |
 | `bundles/ops/` | Bundle: dashboards, alerts, Genie space |
 | `tests/` | `unit/` (pytest), `integration/` (golden-drop pipeline test), `fixtures/<source_id>/`, `drills/` |
-| `docs/` | Architecture, ADRs, onboarding runbook, data contracts, `progress.md`, `evaluation.md`, `gcp-to-databricks.md` (GCP → Databricks equivalents) |
+| `docs/` | Architecture, ADRs, onboarding runbook, data contracts, `progress.md`, `evaluation.md`, `platform-equivalents.md` (GCP · Snowflake · Databricks equivalents) |
 
 ## Naming
 
