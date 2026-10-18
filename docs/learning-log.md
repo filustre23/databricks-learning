@@ -53,6 +53,14 @@ clicked, and what that means for the `databricks-intro` module in
 5. **Explain naming conventions explicitly** (`<source>_bronze`, `observation`, `outbound`) when they first appear.
    Unexplained names generated questions.
 
+**Questions asked (hands-on)**
+- "These files would normally be in an S3 bucket, correct?" (after generating the Source B files)
+
+**Module impact (added)**
+6. **In lesson 03 (Volumes), show the production path next to the sandbox path:**
+   `s3://<landing>/<source>/<feed>/yyyy/mm/dd/` ↔ `/Volumes/<env>/landing/<source>/…`. Upload the sandbox files
+   into feed/date folders from the start, so the learner practices the real layout.
+
 ---
 
 ## Session 1 (continued): hands-on
