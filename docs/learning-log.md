@@ -56,7 +56,7 @@ clicked, and what that means for the `databricks-intro` module in
 **Questions asked (hands-on)**
 - "These files would normally be in an S3 bucket, correct?" (after generating the Source B files)
 - "So Databricks doesn't actually have a warehouse? Everything is in S3 and we transform within it as if it was the warehouse?"
-  - The first answer (a four-layer stack diagram + tables) was "kinda hard to understand". The re-explanation that worked: a Snowflake comparison table + "a table = a folder of files + a logbook".
+  - The first answer (a four-layer stack diagram + tables) was "kinda hard to understand". The re-explanation that worked, confirmed by the learner ("easy to understand this way"): a Snowflake comparison table + "a table = a folder of files + a logbook".
 
 **Module impact (added)**
 6. **In lesson 03 (Volumes), show the production path next to the sandbox path:**
